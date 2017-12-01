@@ -2,18 +2,19 @@ const microtime = require('microtime');
 const Promise   = require('bluebird');
 const uuid      = require('uuid');
 const _         = require('lodash');
-const Counter   = require('counter');
+const Counter   = require('./counter');
+const Redis = require('ioredis');
 
 const defaultOptions = {
-  namespace:      'defaultShaper',
-  maxConcurrency: null,
-  maxHistoryMs:   30 * 1000,
+  namespace:       'defaultShaper',
+  maxConcurrency:  null,
+  maxHistoryMs:    30 * 1000,
   minDifferenceUs: null,
-  timeout:        2000,
-  redisConfig: null,
-  command: null,
-  pub: null,
-  sub: null
+  timeoutMs:       2000,
+  redisConfig:     null,
+  command:         null,
+  pub:             null,
+  sub:             null
 };
 
 const TrafficShaper = function (options) {
@@ -29,9 +30,21 @@ const TrafficShaper = function (options) {
     throw new Error('if provided, redisConfig must be an object with host string and port integer');
   }
 
-  if (!_.isInteger(options.maxConcurrency) || options.maxConcurrency < 1) {
+  if (!_.isInteger(options.maxConcurrency) || options.maxConcurrency <= 1) {
     throw new Error('maxConcurrency must be an integer greater than 1');
   }
+
+  if (!_.isInteger(options.timeoutMs) || options.timeoutMs < 1) {
+    throw new Error('timeoutMs must be an integer greater than 0');
+  }
+
+  if (!_.isInteger(options.maxHistoryMs) || options.maxHistoryMs < 1) {
+    throw new Error('maxHistoryMs must be an integer greater than 0');
+  }
+
+  const command = options.command ? options.command : new Redis(options.commandConfig);
+  const pub = options.pub ? options.pub : new Redis(options.commandConfig);
+  const sub = options.sub ? options.sub : new Redis(options.commandConfig);
 
   const subscribed = false;
   const ackCounter = new Counter();
@@ -60,10 +73,10 @@ const TrafficShaper = function (options) {
     const key         = options.namespace + id;
 
     const subscribedPromise = subscribed ? Promise.resolve() : sub.subscribe(key).then(() => {
-      sub.on(messageHandler);
+      sub.on('message', messageHandler);
     });
 
-    const ack = () => redis.zrem(key, requestId).then((removed) => {
+    const ack = () => command.zrem(key, requestId).then((removed) => {
       if (removed > 0) {
         return pub.publish(key, requestId);
       }
@@ -74,11 +87,11 @@ const TrafficShaper = function (options) {
     .then(() => {
       const clearBeforeUs = now - (defaultOptions.maxHistoryMs * 1000);
 
-      const batch = redis.multi();
+      const batch = command.multi();
       batch.zremrangebyscore(key, 0, clearBeforeUs);
       batch.zrange(key, 0, -1, "withscores");
       batch.zadd(key, now, requestId);
-      batch.expire(key, Math.ceil(defaultOptions.maxHistoryMs / 1000000)); // convert to seconds, as used by redis ttl.
+      batch.expire(key, Math.ceil(defaultOptions.maxHistoryMs / 1000000)); // convert to seconds, as used by command ttl.
 
       return batch.exec()
       .then((results) => {
@@ -92,7 +105,7 @@ const TrafficShaper = function (options) {
 
         if (errors.length > 0) {
           console.warn(`Errors while traffic shaping`);
-          return Promise.reject(`Errors while calling redis: ${errors}`);
+          return Promise.reject(`Errors while calling command: ${errors}`);
         }
 
         const globalInProgress = results[1][1].length / 2;
@@ -110,7 +123,7 @@ const TrafficShaper = function (options) {
           });
         }
       })
-      .timeout(options.timeout)
+      .timeout(options.timeoutMs)
       .tapCatch(ack);
     })
     .then(() => ({ack}));

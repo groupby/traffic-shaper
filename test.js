@@ -1,6 +1,8 @@
 const chai = require('chai');
 expect = chai.expect;
 const Redis = require('ioredis');
+const moment = require('moment');
+const Promise = require('bluebird');
 
 describe('counter tests', () => {
 
@@ -76,8 +78,31 @@ describe.only('shaping tests', () => {
   it('shapes traffic', () => {
     const TrafficShaper = require('./index');
 
-    const trafficShaping = new TrafficShaper()
+    const execTime = {};
 
+    const trafficShaping = new TrafficShaper({redisConfig: {host: 'localhost', port: 6379}, maxConcurrency:2});
+
+    const curTime = moment();
+
+    const first = trafficShaping.wait().then((shaped) => {
+      execTime.first = moment().diff(curTime);
+      return Promise.resolve().delay(500).then(() => shaped.ack());
+    });
+    const second = trafficShaping.wait().then((shaped) => {
+      execTime.second = moment().diff(curTime);
+      return Promise.resolve().delay(800).then(() => shaped.ack());
+    });
+    const third = trafficShaping.wait().then((shaped) => {
+      execTime.third = moment().diff(curTime);
+      return Promise.resolve().then(() => shaped.ack());
+    });
+
+    return Promise.all([first, second, third]).then(() => {
+      expect(execTime.first).to.be.lt(100);
+      expect(execTime.second).to.be.lt(100);
+      expect(execTime.third).to.be.lt(800);
+      expect(execTime.third).to.be.gt(500);
+    });
   });
 
   it.skip('redis', () => {
