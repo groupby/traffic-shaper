@@ -5,46 +5,45 @@ const _         = require('lodash');
 const Counter   = require('./counter');
 const Redis = require('ioredis');
 
-const defaultOptions = {
+const defaultConfig = {
   namespace:       'defaultShaper',
   maxConcurrency:  null,
   maxHistoryMs:    30 * 1000,
-  minDifferenceUs: null,
-  timeoutMs:       2000,
+  timeoutMs:       2 * 1000,
   redisConfig:     null,
   command:         null,
   pub:             null,
   sub:             null
 };
 
-const TrafficShaper = function (options) {
+const TrafficShaper = function (config) {
   const self = this;
 
-  options = Object.assign({}, defaultOptions, options);
+  config = Object.assign({}, defaultConfig, config);
 
-  if (!options.redisConfig && !(options.command && options.pub && options.sub)) {
+  if (!config.redisConfig && !(config.command && config.pub && config.sub)) {
     throw new Error('must provide either redisConfig or command, pub, and sub');
   }
 
-  if (options.redisConfig && (!_.isObject(options.redisConfig) || !_.isString(options.redisConfig.host) || !_.isInteger(options.redisConfig.port))) {
+  if (config.redisConfig && (!_.isObject(config.redisConfig) || !_.isString(config.redisConfig.host) || !_.isInteger(config.redisConfig.port))) {
     throw new Error('if provided, redisConfig must be an object with host string and port integer');
   }
 
-  if (!_.isInteger(options.maxConcurrency) || options.maxConcurrency <= 1) {
+  if (!_.isInteger(config.maxConcurrency) || config.maxConcurrency <= 1) {
     throw new Error('maxConcurrency must be an integer greater than 1');
   }
 
-  if (!_.isInteger(options.timeoutMs) || options.timeoutMs < 1) {
+  if (!_.isInteger(config.timeoutMs) || config.timeoutMs < 1) {
     throw new Error('timeoutMs must be an integer greater than 0');
   }
 
-  if (!_.isInteger(options.maxHistoryMs) || options.maxHistoryMs < 1) {
+  if (!_.isInteger(config.maxHistoryMs) || config.maxHistoryMs < 1) {
     throw new Error('maxHistoryMs must be an integer greater than 0');
   }
 
-  const command = options.command ? options.command : new Redis(options.commandConfig);
-  const pub = options.pub ? options.pub : new Redis(options.commandConfig);
-  const sub = options.sub ? options.sub : new Redis(options.commandConfig);
+  const command = config.command ? config.command : new Redis(config.commandConfig);
+  const pub = config.pub ? config.pub : new Redis(config.commandConfig);
+  const sub = config.sub ? config.sub : new Redis(config.commandConfig);
 
   const subscribed = false;
   const ackCounter = new Counter();
@@ -70,7 +69,7 @@ const TrafficShaper = function (options) {
   self.wait = (id = '') => {
     const now         = microtime.now();
     const requestId = uuid.v4() + now;
-    const key         = options.namespace + id;
+    const key         = config.namespace + id;
 
     const subscribedPromise = subscribed ? Promise.resolve() : sub.subscribe(key).then(() => {
       sub.on('message', messageHandler);
@@ -85,13 +84,13 @@ const TrafficShaper = function (options) {
     return Promise.resolve()
     .then(() => subscribedPromise)
     .then(() => {
-      const clearBeforeUs = now - (defaultOptions.maxHistoryMs * 1000);
+      const clearBeforeUs = now - (defaultConfig.maxHistoryMs * 1000);
 
       const batch = command.multi();
       batch.zremrangebyscore(key, 0, clearBeforeUs);
       batch.zrange(key, 0, -1, "withscores");
       batch.zadd(key, now, requestId);
-      batch.expire(key, Math.ceil(defaultOptions.maxHistoryMs / 1000000)); // convert to seconds, as used by command ttl.
+      batch.expire(key, Math.ceil(defaultConfig.maxHistoryMs / 1000000)); // convert to seconds, as used by command ttl.
 
       return batch.exec()
       .then((results) => {
@@ -110,9 +109,9 @@ const TrafficShaper = function (options) {
 
         const globalInProgress = results[1][1].length / 2;
 
-        if (globalInProgress >= options.maxConcurrency) {
+        if (globalInProgress >= config.maxConcurrency) {
           return new Promise((res, rej) => {
-            const targetCount = ackCounter.get() + (globalInProgress - options.maxConcurrency);
+            const targetCount = ackCounter.get() + (globalInProgress - config.maxConcurrency);
 
             localOutstandingRequests.push({
               requestId,
@@ -121,9 +120,11 @@ const TrafficShaper = function (options) {
               targetCount
             });
           });
+        } else {
+          return Promise.resolve();
         }
       })
-      .timeout(options.timeoutMs)
+      .timeout(config.timeoutMs)
       .tapCatch(ack);
     })
     .then(() => ({ack}));

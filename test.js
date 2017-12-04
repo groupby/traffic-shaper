@@ -104,34 +104,4 @@ describe.only('shaping tests', () => {
       expect(execTime.third).to.be.gt(500);
     });
   });
-
-  it.skip('redis', () => {
-    const redis = new Redis({
-      host: 'localhost',
-      port: 6379
-    });
-
-    return redis.multi()
-    .zadd('somekey', 100, 'setkey')
-    .zadd('somekey', 300, 'setkey1')
-    .zadd('somekey', 340, 'setkey3')
-    .zrange('somekey', 0, -1, "withscores")
-    .exec()
-    .then((results) => {
-      const errors = results.reduce((acc, result) => {
-        if (result[0]) {
-          acc.push(result[0]);
-        }
-
-        return acc;
-      }, []);
-
-      if (errors.length > 0) {
-        console.warn(`Errors while traffic shaping`);
-        return options.rejectOnErrors ? Promise.reject(`Errors while calling redis: ${errors}`) : Promise.resolve();
-      }
-
-      console.log(JSON.stringify(results, null, 2))
-    });
-  });
 });
