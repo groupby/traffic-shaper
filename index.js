@@ -5,6 +5,8 @@ const _         = require('lodash');
 const Counter   = require('./counter');
 const Redis = require('ioredis');
 
+const MAX_EMITTERS = 1000;
+
 const defaultConfig = {
   namespace:       'defaultShaper',
   maxConcurrency:  null,
@@ -41,9 +43,9 @@ const TrafficShaper = function (config) {
     throw new Error('maxHistoryMs must be an integer greater than 0');
   }
 
-  const command = config.command ? config.command : new Redis(config.commandConfig);
-  const pub = config.pub ? config.pub : new Redis(config.commandConfig);
-  const sub = config.sub ? config.sub : new Redis(config.commandConfig);
+  const command = config.command ? config.command : new Redis(config.redisConfig);
+  const pub = config.pub ? config.pub : new Redis(config.redisConfig);
+  const sub = config.sub ? config.sub : new Redis(config.redisConfig);
 
   const subscribed = false;
   const ackCounter = new Counter();
