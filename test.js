@@ -77,40 +77,31 @@ describe('counter tests', () => {
   });
 });
 
-describe('shaping tests', () => {
+describe.only('shaping tests', () => {
   it('shapes traffic', () => {
     const TrafficShaper = require('./index');
 
     const execTime = {};
 
-    const trafficShaping = new TrafficShaper({redisConfig: {host: 'localhost', port: 6379}, maxConcurrency: 2});
+    const trafficShaping = new TrafficShaper({redisConfig: {host: 'localhost', port: 6379}});
 
-    const curTime = moment();
+    const addValue = () => trafficShaping.getDelay(moment().valueOf() * 1000);
 
-    const first  = trafficShaping.wait().then((shaped) => {
-      execTime.first = moment().diff(curTime);
-      return Promise.resolve().delay(500).then(() => shaped.ack());
-    });
-    const second = trafficShaping.wait().then((shaped) => {
-      execTime.second = moment().diff(curTime);
-      return Promise.resolve().delay(800).then(() => shaped.ack());
-    });
-    const third  = trafficShaping.wait().then((shaped) => {
-      execTime.third = moment().diff(curTime);
-      return Promise.resolve().then(() => shaped.ack());
-    });
-
-    return Promise.all([first, second, third]).then(() => {
-      expect(execTime.first).to.be.lt(100);
-      expect(execTime.second).to.be.lt(100);
-      expect(execTime.third).to.be.lt(800);
-      expect(execTime.third).to.be.gt(500);
-    });
+    return addValue().delay(100)
+    .then(() => addValue())
+    .delay(200)
+    .then(() => addValue())
+    .delay(100)
+    .then(() => addValue())
+    .delay(300)
+    .then(() => addValue())
+    .delay(400)
+    .then(() => addValue())
   });
 });
 
-describe.only('shaping tests', () => {
-  it.only('test', () => {
+describe('shaping tests', () => {
+  it('test', () => {
     const redis = new Redis({host: 'localhost', port: 6379});
 
     redis.script('flush').then(() => {

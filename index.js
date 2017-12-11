@@ -14,6 +14,7 @@ const defaultConfig = {
   maxRegulatedDelayMs:     100,
   gain: 0.00001,
   timeoutMs:      2 * 1000,
+  historyMs: 10 * 1000,
   redisConfig:    null,
   command:        null,
   pub:            null,
@@ -47,16 +48,62 @@ const TrafficShaper = function (config) {
 
   const redis = config.command ? config.command : new Redis(config.redisConfig);
 
-  redis.defineCommand(GET_DELAY_SCRIPT, {
-    numberOfKeys: 2,
-    lua:          LUA_SCRIPT
-  });
+  // redis.defineCommand(GET_DELAY_SCRIPT, {
+  //   numberOfKeys: 2,
+  //   lua:          LUA_SCRIPT
+  // });
 
   self.getDelay = (curTimeUs, id = '') => {
-    const prevTimestampKey = PREV_TIMESTAMP_PREFIX + config.namespace + id;
-    const predictionKey    = PREDICTION_PREFIX + config.namespace + id;
+    const now         = microtime.now();
+    const requestId = uuid.v4() + now;
+    const key         = config.namespace + id;
 
-    return redis.getDelay(prevTimestampKey, predictionKey, config.gain, curTimeUs, config.maxRegulatedDelayMs).then((delayUs) => (delayUs < 0) ? 0 : delayUs);
+    const clearBeforeUs = now - (defaultConfig.historyMs * 1000);
+
+    const batch = redis.multi();
+    batch.zremrangebyscore(key, 0, clearBeforeUs);
+    batch.zrange(key, 0, -1, "withscores");
+    batch.zadd(key, curTimeUs, requestId);
+    batch.expire(key, Math.ceil(defaultConfig.historyMs / 1000)); // convert to seconds, as used by command ttl.
+
+    return batch.exec()
+    .then((results) => {
+      const errors = results.reduce((acc, result) => {
+        if (result[0]) {
+          acc.push(result[0]);
+        }
+
+        return acc;
+      }, []);
+
+      if (errors.length > 0) {
+        console.warn(`Errors while traffic shaping`);
+        return Promise.reject(`Errors while calling command: ${errors}`);
+      }
+
+      const timestamps = results[1][1].filter((value, key) => key %2);
+
+      const averageDiff = timestamps.reduce((result, timestamp) => {
+        timestamp = parseInt(timestamp);
+
+        if (!result.previous) {
+          result.previous = timestamp;
+          result.avg = 0;
+          return result;
+        } else {
+          result.avg += (timestamp - result.previous) / timestamps.length;
+          result.previous = timestamp;
+          return result;
+        }
+      }, {});
+
+      const curDiff = curTimeUs - _.last(timestamps);
+
+      console.log(JSON.stringify(averageDiff, null, 2));
+
+      return 10;
+    })
+    .timeout(config.timeoutMs)
   };
 
   self.wait = (id = '') => {
