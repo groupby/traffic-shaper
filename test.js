@@ -1,8 +1,11 @@
-const chai = require('chai');
-expect = chai.expect;
-const Redis = require('ioredis');
-const moment = require('moment');
+const chai    = require('chai');
+expect        = chai.expect;
+const Redis   = require('ioredis');
+const moment  = require('moment');
 const Promise = require('bluebird');
+const path    = require('path');
+const fs      = require('fs');
+const uuid = require('uuid');
 
 describe('counter tests', () => {
 
@@ -29,7 +32,7 @@ describe('counter tests', () => {
 
     expect(counter.get()).to.eql(0);
     counter.set(Counter.MAX_SAFE_VALUE - 1);
-    expect(counter.get()).to.eql(Counter.MAX_SAFE_VALUE -1);
+    expect(counter.get()).to.eql(Counter.MAX_SAFE_VALUE - 1);
     counter.inc();
     expect(counter.get()).to.eql(-Counter.MAX_SAFE_VALUE);
   });
@@ -74,17 +77,17 @@ describe('counter tests', () => {
   });
 });
 
-describe.only('shaping tests', () => {
+describe('shaping tests', () => {
   it('shapes traffic', () => {
     const TrafficShaper = require('./index');
 
     const execTime = {};
 
-    const trafficShaping = new TrafficShaper({redisConfig: {host: 'localhost', port: 6379}, maxConcurrency:2});
+    const trafficShaping = new TrafficShaper({redisConfig: {host: 'localhost', port: 6379}, maxConcurrency: 2});
 
     const curTime = moment();
 
-    const first = trafficShaping.wait().then((shaped) => {
+    const first  = trafficShaping.wait().then((shaped) => {
       execTime.first = moment().diff(curTime);
       return Promise.resolve().delay(500).then(() => shaped.ack());
     });
@@ -92,7 +95,7 @@ describe.only('shaping tests', () => {
       execTime.second = moment().diff(curTime);
       return Promise.resolve().delay(800).then(() => shaped.ack());
     });
-    const third = trafficShaping.wait().then((shaped) => {
+    const third  = trafficShaping.wait().then((shaped) => {
       execTime.third = moment().diff(curTime);
       return Promise.resolve().then(() => shaped.ack());
     });
@@ -103,5 +106,141 @@ describe.only('shaping tests', () => {
       expect(execTime.third).to.be.lt(800);
       expect(execTime.third).to.be.gt(500);
     });
+  });
+});
+
+describe.only('shaping tests', () => {
+  it.only('test', () => {
+    const redis = new Redis({host: 'localhost', port: 6379});
+
+    redis.script('flush').then(() => {
+      redis.defineCommand('getDelay', {
+        numberOfKeys: 2,
+        lua:          fs.readFileSync(path.join(__dirname, './getDelay.lua'))
+      });
+
+      return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf()).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      }).delay(100).then((result) => {
+        console.log(result)
+        return redis.getDelay('prevTimestamp', 'prediction', uuid.v4(), moment().valueOf());
+      })
+    });
+  });
+
+  it('shapes traffic', () => {
+    const TrafficShaper = require('./index');
+
+    const trafficShaper = new TrafficShaper({redisConfig: {host: 'localhost', port: 6379}});
+
+    let prevTime = moment();
+
+    return trafficShaper.wait()
+    .then(() => Promise.resolve()
+      .then(() => {
+        console.log(moment().diff(prevTime))
+        prevTime = moment()
+      }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
+    .then(() => Promise.resolve()
+    .then(() => {
+      console.log(moment().diff(prevTime))
+      prevTime = moment()
+    }).then(() => trafficShaper.wait()))
   });
 });
