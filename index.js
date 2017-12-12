@@ -14,7 +14,8 @@ const defaultConfig = {
   historyTtlMs: 300,
   timeoutMs:    2 * 1000,
   historyMs:    10 * 1000,
-  redisConfig:  null
+  redisConfig:  null,
+  redis: null
 };
 
 const GET_DELAY_SCRIPT = 'getDelay';
@@ -24,8 +25,8 @@ const TrafficShaper = function (config) {
 
   config = Object.assign({}, defaultConfig, config);
 
-  if (!config.redisConfig) {
-    throw new Error('must provide redisConfig');
+  if (!config.redisConfig && !config.redis) {
+    throw new Error('must provide redisConfig or redis');
   }
 
   if (config.redisConfig && (!_.isObject(config.redisConfig) || !_.isString(config.redisConfig.host) || !_.isInteger(config.redisConfig.port))) {
@@ -36,11 +37,7 @@ const TrafficShaper = function (config) {
     throw new Error('timeoutMs must be an integer greater than 0');
   }
 
-  // if (!_.isInteger(config.maxRegulatedDelayMs) || config.maxRegulatedDelayMs < 1) {
-  //   throw new Error('maxRegulatedDelayMs must be an integer greater than 0');
-  // }
-
-  const redis = config.command ? config.command : new Redis(config.redisConfig);
+  const redis = config.redis ? config.redis : new Redis(config.redisConfig);
 
   redis.defineCommand(GET_DELAY_SCRIPT, {
     numberOfKeys: 1,
