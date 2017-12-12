@@ -48,7 +48,7 @@ const TrafficShaper = function (config) {
   });
 
   self.getDelay = (curTimeUs, id = '') => {
-    const now       = microtime.now();
+    const now       = curTimeUs;
     const requestId = uuid.v4() + now;
     const key       = config.namespace + id;
 
