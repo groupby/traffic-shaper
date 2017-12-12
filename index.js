@@ -17,6 +17,8 @@ const defaultConfig = {
   redisConfig:  null
 };
 
+const GET_DELAY_SCRIPT = 'getDelay';
+
 const TrafficShaper = function (config) {
   const self = this;
 
@@ -40,10 +42,10 @@ const TrafficShaper = function (config) {
 
   const redis = config.command ? config.command : new Redis(config.redisConfig);
 
-  // redis.defineCommand(GET_DELAY_SCRIPT, {
-  //   numberOfKeys: 2,
-  //   lua:          LUA_SCRIPT
-  // });
+  redis.defineCommand(GET_DELAY_SCRIPT, {
+    numberOfKeys: 1,
+    lua:          LUA_SCRIPT
+  });
 
   self.getDelay = (curTimeUs, id = '') => {
     const now       = microtime.now();
@@ -52,60 +54,7 @@ const TrafficShaper = function (config) {
 
     const clearBeforeUs = now - (defaultConfig.historyMs * 1000);
 
-    const batch = redis.multi();
-    batch.zremrangebyscore(key, 0, clearBeforeUs);
-    batch.zrange(key, 0, -1, "withscores");
-    batch.zadd(key, curTimeUs, requestId);
-    batch.pexpire(key, defaultConfig.historyTtlMs); // convert to seconds, as used by command ttl.
-
-    return batch.exec()
-    .then((results) => {
-      const errors = results.reduce((acc, result) => {
-        if (result[0]) {
-          acc.push(result[0]);
-        }
-
-        return acc;
-      }, []);
-
-      if (errors.length > 0) {
-        console.warn(`Errors while traffic shaping`);
-        return Promise.reject(`Errors while calling command: ${errors}`);
-      }
-
-      if (!results[1][1]) {
-        return 0;
-      }
-
-      const timestamps = results[1][1].filter((value, key) => key % 2);
-
-      // Return if history is empty
-      if (timestamps.length < 2) {
-        return 0;
-      }
-
-      const diffs = timestamps.reduce((result, timestamp) => {
-        timestamp = parseInt(timestamp);
-
-        if (!result.previous) {
-          result.previous = timestamp;
-          return result;
-        } else {
-          result.diffs.push(timestamp - result.previous);
-          result.previous = timestamp;
-          return result;
-        }
-      }, {diffs: []}).diffs.sort();
-
-      const medianDiff = diffs[Math.floor(diffs.length / 2)];
-      const curDiff = curTimeUs - _.last(timestamps);
-
-      // console.log('curDiff ' + (curDiff / 1000) + ' medianDiff ' + (medianDiff / 1000));
-
-      const delta = (medianDiff - curDiff > 0) ? medianDiff - curDiff : 0;
-      return Math.round(delta / 1000);
-    })
-    .timeout(config.timeoutMs)
+    return redis[GET_DELAY_SCRIPT](key, requestId, clearBeforeUs, config.historyTtlMs, now);
   };
 
   self.wait = (id = '') => {
