@@ -10,20 +10,12 @@ const fs        = require('fs');
 const LUA_SCRIPT = fs.readFileSync(path.join(__dirname, './getDelay.lua'));
 
 const defaultConfig = {
-  namespace:      'defaultShaper',
-  maxRegulatedDelayMs:     100,
-  gain: 0.00001,
-  timeoutMs:      2 * 1000,
-  historyMs: 10 * 1000,
-  redisConfig:    null,
-  command:        null,
-  pub:            null,
-  sub:            null
+  namespace:    'defaultShaper',
+  historyTtlMs: 300,
+  timeoutMs:    2 * 1000,
+  historyMs:    10 * 1000,
+  redisConfig:  null
 };
-
-const GET_DELAY_SCRIPT      = `getDelay`;
-const PREV_TIMESTAMP_PREFIX = 'prevTimestamp_';
-const PREDICTION_PREFIX     = 'prediction_';
 
 const TrafficShaper = function (config) {
   const self = this;
@@ -42,9 +34,9 @@ const TrafficShaper = function (config) {
     throw new Error('timeoutMs must be an integer greater than 0');
   }
 
-  if (!_.isInteger(config.maxRegulatedDelayMs) || config.maxRegulatedDelayMs < 1) {
-    throw new Error('maxRegulatedDelayMs must be an integer greater than 0');
-  }
+  // if (!_.isInteger(config.maxRegulatedDelayMs) || config.maxRegulatedDelayMs < 1) {
+  //   throw new Error('maxRegulatedDelayMs must be an integer greater than 0');
+  // }
 
   const redis = config.command ? config.command : new Redis(config.redisConfig);
 
@@ -54,9 +46,9 @@ const TrafficShaper = function (config) {
   // });
 
   self.getDelay = (curTimeUs, id = '') => {
-    const now         = microtime.now();
+    const now       = microtime.now();
     const requestId = uuid.v4() + now;
-    const key         = config.namespace + id;
+    const key       = config.namespace + id;
 
     const clearBeforeUs = now - (defaultConfig.historyMs * 1000);
 
@@ -64,7 +56,7 @@ const TrafficShaper = function (config) {
     batch.zremrangebyscore(key, 0, clearBeforeUs);
     batch.zrange(key, 0, -1, "withscores");
     batch.zadd(key, curTimeUs, requestId);
-    batch.expire(key, Math.ceil(defaultConfig.historyMs / 1000)); // convert to seconds, as used by command ttl.
+    batch.pexpire(key, defaultConfig.historyTtlMs); // convert to seconds, as used by command ttl.
 
     return batch.exec()
     .then((results) => {
@@ -81,33 +73,43 @@ const TrafficShaper = function (config) {
         return Promise.reject(`Errors while calling command: ${errors}`);
       }
 
-      const timestamps = results[1][1].filter((value, key) => key %2);
+      if (!results[1][1]) {
+        return 0;
+      }
 
-      const averageDiff = timestamps.reduce((result, timestamp) => {
+      const timestamps = results[1][1].filter((value, key) => key % 2);
+
+      // Return if history is empty
+      if (timestamps.length < 2) {
+        return 0;
+      }
+
+      const diffs = timestamps.reduce((result, timestamp) => {
         timestamp = parseInt(timestamp);
 
         if (!result.previous) {
           result.previous = timestamp;
-          result.avg = 0;
           return result;
         } else {
-          result.avg += (timestamp - result.previous) / timestamps.length;
+          result.diffs.push(timestamp - result.previous);
           result.previous = timestamp;
           return result;
         }
-      }, {});
+      }, {diffs: []}).diffs.sort();
 
+      const medianDiff = diffs[Math.floor(diffs.length / 2)];
       const curDiff = curTimeUs - _.last(timestamps);
 
-      console.log(JSON.stringify(averageDiff, null, 2));
+      // console.log('curDiff ' + (curDiff / 1000) + ' medianDiff ' + (medianDiff / 1000));
 
-      return 10;
+      const delta = (medianDiff - curDiff > 0) ? medianDiff - curDiff : 0;
+      return Math.round(delta / 1000);
     })
     .timeout(config.timeoutMs)
   };
 
   self.wait = (id = '') => {
-    const now              = microtime.now();
+    const now = microtime.now();
 
     return Promise.resolve()
     .then(() => self.getDelay(now, id))

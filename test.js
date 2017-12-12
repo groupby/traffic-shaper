@@ -81,21 +81,20 @@ describe.only('shaping tests', () => {
   it('shapes traffic', () => {
     const TrafficShaper = require('./index');
 
-    const execTime = {};
-
     const trafficShaping = new TrafficShaper({redisConfig: {host: 'localhost', port: 6379}});
 
-    const addValue = () => trafficShaping.getDelay(moment().valueOf() * 1000);
+    const addValue = () => trafficShaping.getDelay(moment().valueOf() * 1000).then((delay) => console.log(delay));
 
-    return addValue().delay(100)
+    return addValue()
+    .delay(80)
     .then(() => addValue())
-    .delay(200)
+    .delay(50)
     .then(() => addValue())
-    .delay(100)
+    .delay(10)
     .then(() => addValue())
-    .delay(300)
+    .delay(15)
     .then(() => addValue())
-    .delay(400)
+    .delay(5)
     .then(() => addValue())
   });
 });
